@@ -35,7 +35,7 @@
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js";
 import { getFirestore, collection, addDoc, getDocs, query, orderBy, serverTimestamp, onSnapshot } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
-
+import { getAuth, signInWithEmailAndPassword, signOut } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js";
 /* 1) GANTI nilai konfigurasi berikut dari Firebase Console > Project settings > Your apps.
    Project ID yang digunakan: e-asesmen-siswa. Jangan menaruh service-account/private key di browser. */
 const FIREBASE_CONFIG = {
@@ -47,13 +47,21 @@ const FIREBASE_CONFIG = {
   appId: "1:57532837764:web:7e50d8a4e92cf2fee137d1",
   measurementId: "G-VSQ8BS5CKB"
 };
-const TEACHER_PASSWORD = "adminpai11"; // Perlindungan tampilan saja; bukan pengamanan database.
+const TEACHER_EMAIL = "antonsulistio305@gmail.com";
 const DB_COLLECTION = "hasil_asesmen_pai";
 const firebaseReady = !!FIREBASE_CONFIG.apiKey && !FIREBASE_CONFIG.apiKey.startsWith("GANTI_") &&
   !!FIREBASE_CONFIG.messagingSenderId && !FIREBASE_CONFIG.messagingSenderId.startsWith("GANTI_") &&
   !!FIREBASE_CONFIG.appId && !FIREBASE_CONFIG.appId.startsWith("GANTI_");
-let db = null;
-if (firebaseReady) { try { db = getFirestore(initializeApp(FIREBASE_CONFIG)); } catch(e) { console.error("Firebase init:",e); } }
+let db = null, auth = null;
+if (firebaseReady) {
+  try {
+    const app = initializeApp(FIREBASE_CONFIG);
+    db = getFirestore(app);
+    auth = getAuth(app);
+  } catch(e) {
+    console.error("Firebase init:", e);
+  }
+}
 
 const questions = [
 {t:"Berpikir Kritis",q:"Ketika menerima berita di media sosial tentang bencana, tindakan yang paling mencerminkan tabayyun adalah ...",o:["Langsung membagikannya agar semua orang tahu","Memeriksa sumber dan membandingkannya dengan informasi tepercaya","Mempercayainya jika banyak orang menyukai","Mengubah judul agar lebih menarik"],a:1},
@@ -124,8 +132,23 @@ $("nextBtn").addEventListener("click",()=>{if(answers[index]===undefined)return;
 $("finishBtn").addEventListener("click",()=>{if(confirm("Selesaikan asesmen sekarang? Soal yang belum dijawab akan dihitung salah."))finishQuiz(false);});
 async function saveResult(record){if(db){const doc=await addDoc(collection(db,DB_COLLECTION),{...record,createdAt:serverTimestamp()});return {saved:true,id:doc.id,source:"cloud"};}const local=JSON.parse(localStorage.getItem("pai_results_fallback")||"[]");local.push({...record,id:"local-"+Date.now(),createdAt:Date.now()});localStorage.setItem("pai_results_fallback",JSON.stringify(local));return {saved:false,source:"local"};}
 async function finishQuiz(timeExpired){if(finished)return;finished=true;clearInterval(ticker);const correct=quiz.reduce((n,q,i)=>n+(answers[i]===q.a?1:0),0),wrong=quiz.length-correct,score=Math.round(correct/quiz.length*100);const record={nama:student.name,nis:student.nis,kelas:student.kelas,jumlahBenar:correct,jumlahSalah:wrong,skor:score,waktuSelesai:new Date().toISOString(),durasiDetik:Math.max(0,Math.round((60*60*1000-(endAt-Date.now()))/1000)),statusWaktuHabis:!!timeExpired};$("finalScore").textContent=score;$("finalCorrect").textContent="Benar: "+correct;$("finalWrong").textContent="Salah: "+wrong;showView("resultView");$("saveStatus").textContent="Mengirim hasil...";try{const result=await saveResult(record);$("saveStatus").textContent=result.saved?"Hasil berhasil disimpan ke database cloud.":"Firebase belum dikonfigurasi; hasil hanya tersimpan di browser ini dan tidak terlihat di perangkat guru lain."; }catch(e){console.error(e);$("saveStatus").textContent="Gagal mengirim ke cloud. Periksa konfigurasi/koneksi Firebase. Nilai tidak dapat dijamin tersimpan.";}}
-$("teacherAccess").addEventListener("click",()=>{const p=prompt("Masukkan password Dashboard Guru:");if(p===null)return;if(p!==TEACHER_PASSWORD){alert("Password salah.");return;}showView("teacherView");startLiveResults();});
-$("exitTeacher").addEventListener("click",()=>showView("loginView"));
+$("teacherAccess").addEventListener("click",async()=>{
+const email=prompt("Email guru:");
+if(email===null)return;
+const password=prompt("Kata sandi akun Firebase:");
+if(password===null)return;
+try{
+const credential=await signInWithEmailAndPassword(auth,email.trim(),password);
+if(credential.user.email!==TEACHER_EMAIL){await signOut(auth);alert("Akun ini tidak memiliki akses guru.");return;}
+showView("teacherView");
+startLiveResults();
+}catch(e){console.error(e);alert("Login gagal. Periksa email, kata sandi, dan koneksi.");}
+});
+$("exitTeacher").addEventListener("click",async()=>{
+if(stopLiveResults){stopLiveResults();stopLiveResults=null;}
+await signOut(auth);
+showView("loginView");
+});
 $("refreshBtn").addEventListener("click",loadResults);
 function startLiveResults(){
  if(stopLiveResults){stopLiveResults();stopLiveResults=null;}
