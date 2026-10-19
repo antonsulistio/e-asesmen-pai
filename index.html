@@ -165,13 +165,49 @@ function startLiveResults(){
  }else{loadResults();}
 }
 function renderResultsRows(rows){
- if(!rows.length){$("resultsBody").innerHTML='<tr><td colspan="8" class="text-center muted py-4">Belum ada hasil tersimpan.</td></tr>';return;}
- $("resultsBody").innerHTML=rows.map((r,i)=>`<tr><td>${i+1}</td><td>${escapeHtml(r.nama)}</td><td>${escapeHtml(r.nis)}</td><td>${escapeHtml(r.kelas)}</td><td>${Number(r.jumlahBenar)||0}</td><td>${Number(r.jumlahSalah)||0}</td><td><strong>${Number(r.skor)||0}</strong></td><td>${escapeHtml(formatDate(r.waktuSelesai))}</td></tr>`).join("");
+  if(!rows.length){
+    $("resultsBody").innerHTML =
+      '<tr><td colspan="9" class="text-center py-4">Belum ada hasil tersimpan.</td></tr>';
+    return;
+  }
+
+  $("resultsBody").innerHTML = rows.map((r,i)=>`
+    <tr>
+      <td>${i+1}</td>
+      <td>${escapeHtml(r.nama)}</td>
+      <td>${escapeHtml(r.nis)}</td>
+      <td>${escapeHtml(r.kelas)}</td>
+      <td>${Number(r.jumlahBenar)||0}</td>
+      <td>${Number(r.jumlahSalah)||0}</td>
+      <td><strong>${Number(r.skor)||0}</strong></td>
+      <td>${escapeHtml(formatDate(r.waktuSelesai))}</td>
+      <td><button type="button" class="btn btn-sm btn-danger"
+        onclick="hapusNilai('${r.id}')">Hapus</button></td>
+    </tr>
+  `).join("");
 }
 async function loadResults(){ $("teacherStatus").textContent="Memuat data...";$("resultsBody").innerHTML='<tr><td colspan="8" class="text-center py-4">Memuat...</td></tr>';try{let rows=[];if(db){const snap=await getDocs(query(collection(db,DB_COLLECTION),orderBy("createdAt","desc")));rows=snap.docs.map(d=>({id:d.id,...d.data()}));$("teacherStatus").textContent=`${rows.length} data dari cloud`;}else{rows=JSON.parse(localStorage.getItem("pai_results_fallback")||"[]").reverse();$("teacherStatus").textContent=`${rows.length} data lokal • Firebase belum aktif`;}currentResults=rows;if(!rows.length){$("resultsBody").innerHTML='<tr><td colspan="8" class="text-center muted py-4">Belum ada hasil tersimpan.</td></tr>';return;}$("resultsBody").innerHTML=rows.map((r,i)=>`<tr><td>${i+1}</td><td>${escapeHtml(r.nama)}</td><td>${escapeHtml(r.nis)}</td><td>${escapeHtml(r.kelas)}</td><td>${Number(r.jumlahBenar)||0}</td><td>${Number(r.jumlahSalah)||0}</td><td><strong>${Number(r.skor)||0}</strong></td><td>${escapeHtml(formatDate(r.waktuSelesai))}</td></tr>`).join("");}catch(e){console.error(e);$("teacherStatus").textContent="Gagal memuat data cloud. Periksa Firebase dan Firestore Rules.";$("resultsBody").innerHTML='<tr><td colspan="8" class="text-center text-danger py-4">Gagal memuat data. Periksa konfigurasi dan aturan Firestore.</td></tr>';}}
 function formatDate(v){if(!v)return "—";const d=new Date(v);return isNaN(d)?"—":d.toLocaleString("id-ID",{dateStyle:"medium",timeStyle:"short"});}
 $("exportBtn").addEventListener("click",()=>{if(!currentResults.length){alert("Belum ada data untuk diekspor.");return;}const headers=["Nama","NIS/NISN","Kelas","Jumlah Benar","Jumlah Salah","Skor Akhir","Waktu Selesai"];const rows=currentResults.map(r=>[r.nama,r.nis,r.kelas,r.jumlahBenar,r.jumlahSalah,r.skor,formatDate(r.waktuSelesai)]);const csv=[headers,...rows].map(row=>row.map(v=>'"'+String(v??"").replace(/"/g,'""')+'"').join(",")).join("\r\n");const blob=new Blob(["\ufeff"+csv],{type:"text/csv;charset=utf-8;"}),url=URL.createObjectURL(blob),a=document.createElement("a");a.href=url;a.download="rekap_nilai_pai_kelas_xi.csv";a.click();URL.revokeObjectURL(url);});
 if(!firebaseReady||!db){$("setupNotice").classList.remove("hidden");$("setupNotice").innerHTML='<strong>Konfigurasi Firebase belum lengkap.</strong> Isi FIREBASE_CONFIG di dalam kode sebelum hosting. Jika tidak, data hanya tersimpan lokal dan tidak tersinkron antarperangkat.';}else{$("setupNotice").classList.add("hidden");}
+window.hapusNilai = async function(id) {
+  if (!auth?.currentUser || auth.currentUser.email !== TEACHER_EMAIL) {
+    alert("Hanya akun guru yang dapat menghapus nilai.");
+    return;
+  }
+
+  if (!confirm("Yakin ingin menghapus nilai siswa ini secara permanen?")) {
+    return;
+  }
+
+  try {
+    await deleteDoc(doc(db, DB_COLLECTION, id));
+    alert("Nilai berhasil dihapus.");
+  } catch (error) {
+    console.error(error);
+    alert("Gagal menghapus nilai. Periksa koneksi dan aturan Firestore.");
+  }
+};
 </script>
 </body>
 </html>
